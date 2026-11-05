@@ -2,7 +2,8 @@ import * as repo from "./data/repository.js";
 import { teamLabel } from "./data/model.js";
 import { parseSoldierRows } from "./data/schema.js";
 import { bindDialog, closeDialog, openForm } from "./dialogs.js";
-import { fmtDate, openReturnForm, openSignForm } from "./actions.js";
+import { fmtDate, openKitSignForm, openReturnForm } from "./actions.js";
+import { printSoldierForm } from "./reports.js";
 import { canEdit, store } from "./state.js";
 import { esc, icon } from "./ui.js";
 
@@ -38,7 +39,7 @@ export function renderSoldiers(view) {
   });
   view.onclick = (e) => {
     const act = e.target.closest("[data-act]")?.dataset.act;
-    if (act === "sign") return openSignForm();
+    if (act === "sign") return openKitSignForm();
     if (act === "add") return openSoldierForm();
     if (act === "import") return openImportForm();
     const chip = e.target.closest("[data-team]");
@@ -140,7 +141,8 @@ export function openSoldier(soldierId) {
     const btn = e.target.closest("[data-act]");
     if (!btn) return;
     const id = dlg.dataset.soldier;
-    if (btn.dataset.act === "sign") openSignForm({ soldierId: id });
+    if (btn.dataset.act === "sign") openKitSignForm({ soldierId: id });
+    else if (btn.dataset.act === "print") printSoldierForm(id);
     else if (btn.dataset.act === "return") openReturnForm(btn.dataset.item, id);
     else if (btn.dataset.act === "edit") openSoldierForm(store.soldiers.find((s) => s.id === id));
     else if (btn.dataset.act === "delete") openDeleteForm(id);
@@ -164,24 +166,26 @@ function fillSoldier(dlg, soldierId, animate) {
       <span class="soldier__avatar soldier__avatar--lg" aria-hidden="true">${esc(initials(s.name))}</span>
       <div class="cd__titles">
         <h2 id="soldier-dialog-title">${esc(s.name)}</h2>
-        <p>${esc(teamLabel(s.team))}</p>
+        <p>${esc(teamLabel(s.team))}${s.email ? ` · <span dir="ltr">${esc(s.email)}</span>` : ""}</p>
       </div>
       <span class="pill ${s.signedQty ? "pill--info" : "pill--ok"}">${s.signedQty ? `מוחתם · ${s.signedQty}` : "ללא ציוד"}</span>
       <button type="button" class="btn btn--icon" data-close aria-label="סגירה">${icon("close", "btn__icon")}</button>
     </header>
     <div class="cd__body">
-      ${edit ? `
       <div class="page-actions cd__actions">
+        ${edit ? `
         <button type="button" class="btn btn--primary btn--sm" data-act="sign">החתמת ציוד</button>
         <button type="button" class="btn btn--ghost btn--sm" data-act="edit">עריכת פרטים</button>
-        <button type="button" class="btn btn--ghost btn--sm" data-act="delete">מחיקה</button>
-      </div>` : ""}
+        <button type="button" class="btn btn--ghost btn--sm" data-act="delete">מחיקה</button>` : ""}
+        <button type="button" class="btn btn--ghost btn--sm" data-act="print">הדפסת טופס החתמה</button>
+      </div>
       <h3 class="section-title">ציוד מוחתם</h3>
       ${s.items.length ? `<div class="signed">${s.items.map((x, n) => `
         <div class="signed__row" style="--i:${n}">
           <div class="signed__main">
             <strong>${esc(x.name)}</strong> <span class="signed__qty">×${x.qty}</span>
             <small class="muted">ארגז ${esc(x.crateNumber)} – ${esc(x.crateName)}${x.signedAt ? ` · נחתם ${fmtDate(x.signedAt)}` : ""}${x.signedBy ? ` · ע״י ${esc(x.signedBy)}` : ""}</small>
+            ${x.note ? `<small class="signed__note">הערה: ${esc(x.note)}</small>` : ""}
           </div>
           ${edit ? `<button type="button" class="btn btn--ghost btn--sm" data-act="return" data-item="${esc(x.itemId)}">זיכוי</button>` : ""}
         </div>`).join("")}</div>` : `<p class="muted">לא מוחתם על ציוד.</p>`}
@@ -204,9 +208,13 @@ export function openSoldierForm(s = null) {
       <label class="field"><span>צוות</span>
         <input name="team" list="team-list" maxlength="40" autocomplete="off" placeholder="לדוגמה: 1, חפק, מפלג" value="${esc(s?.team ?? "")}"></label>
       <datalist id="team-list">${teams.map((t) => `<option value="${esc(t)}">`).join("")}</datalist>
+      <label class="field"><span>מייל (לאישורי החתמה)</span>
+        <input name="email" type="email" dir="ltr" maxlength="120" autocomplete="off" placeholder="name@gmail.com" value="${esc(s?.email ?? "")}"></label>
       <p class="form__hint">אין להזין מספר אישי.</p>`,
     onSubmit: async (fd) => {
-      await repo.saveSoldier({ id: s?.id, firstName: fd.get("firstName"), lastName: fd.get("lastName"), team: fd.get("team") });
+      await repo.saveSoldier({
+        id: s?.id, firstName: fd.get("firstName"), lastName: fd.get("lastName"), team: fd.get("team"), email: fd.get("email"),
+      });
       return s ? "הפרטים נשמרו" : "החייל נוסף";
     },
   });

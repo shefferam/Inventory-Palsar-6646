@@ -27,8 +27,9 @@ export function bindDialog(dlg, onClick) {
  * Small modal form. `body` is trusted HTML built by the caller (values escaped).
  * `onSubmit(formData)` may throw to show an inline error, or return a success toast message.
  */
-export function openForm({ title, body, submit, onSubmit, danger = false }) {
+export function openForm({ title, body, submit, onSubmit, danger = false, wide = false }) {
   const dlg = document.getElementById("form-dialog");
+  dlg.classList.toggle("form-dialog--wide", wide);
   dlg.innerHTML = `
     <form class="form" novalidate>
       <header class="form__head">

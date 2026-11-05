@@ -1,14 +1,17 @@
-import { holdersOf, STATUS, teamLabel } from "./data/model.js";
+import { holdersOf, ROLE_LABEL, STATUS, teamLabel } from "./data/model.js";
 import { backend } from "./data/repository.js";
-import { openReturnForm, openSignForm } from "./actions.js";
+import {
+  fmtDate, openCountForm, openCountSequence, openCrateForm, openDeleteCrateForm, openDeleteItemForm, openItemForm,
+  openReturnForm, openSignForm,
+} from "./actions.js";
 import { bindDialog, closeDialog } from "./dialogs.js";
+import { openExportForm } from "./reports.js";
 import { openSoldier } from "./soldiers.js";
-import { canEdit, store } from "./state.js";
+import { canEdit, findItem, store } from "./state.js";
 import { EMBLEM_SRC, esc, icon, reducedMotion } from "./ui.js";
 
 const state = { filter: "all", query: "" };
 const BACKEND_LABEL = { local: "מקומי – בדפדפן זה בלבד", sheets: "Google Sheets (משותף)", firestore: "Firestore (משותף)" };
-const ROLE_LABEL = { viewer: "צפייה", editor: "עריכה", admin: "מנהל" };
 
 export function refreshDashboard(view, first) {
   if (view.querySelector("#dash-live")) renderLive(view, first);
@@ -48,6 +51,9 @@ function crateAlert(c) {
   return "";
 }
 
+const crateMeta = (c) => [c.category, c.location].filter(Boolean).map(esc).join(" · ");
+const lastCount = (c) => (c.lastCountAt ? `נספר ב-${fmtDate(c.lastCountAt)}` : "טרם נספר");
+
 const crateCard = (c, i) => `
   <div class="crate crate--${c.status}" role="button" tabindex="0" data-crate="${esc(c.id)}" style="--i:${i}"
        aria-label="ארגז ${esc(c.number)} – ${esc(c.name)}, סטטוס ${STATUS[c.status].label}" aria-haspopup="dialog">
@@ -58,7 +64,8 @@ const crateCard = (c, i) => `
     <div class="crate__body">
       <div>
         <h3 class="crate__name">${esc(c.name)}</h3>
-        <span class="crate__cat">${esc(c.category)} · ${esc(c.location)}</span>
+        <span class="crate__cat">${crateMeta(c)}</span>
+        <span class="crate__count">${lastCount(c)}</span>
       </div>
       <dl class="crate__stats">
         <div><dt>סוגי פריטים</dt><dd>${c.itemTypes}</dd></div>
@@ -74,7 +81,7 @@ function filteredCrates() {
   const q = state.query.trim();
   return store.crates.filter((c) =>
     (state.filter === "all" || c.status === state.filter) &&
-    (!q || [c.name, c.number, c.category, ...c.items.map((i) => i.name)].some((s) => s.includes(q))));
+    (!q || [c.name, c.number, c.category, ...c.items.flatMap((i) => [i.name, i.serial])].some((s) => s.includes(q))));
 }
 
 function renderCrates(grid) {
@@ -136,6 +143,11 @@ function renderLive(view, animate) {
       </div>
     </section>` : ""}`;
 
+  view.querySelector("#crate-actions").innerHTML = `
+    ${canEdit() ? `
+    <button type="button" class="btn btn--primary btn--sm" data-act="add-crate">הוספת ארגז</button>
+    <button type="button" class="btn btn--ghost btn--sm" data-act="count-all">ספירת מלאי</button>` : ""}
+    <button type="button" class="btn btn--ghost btn--sm" data-act="export">ייצוא ל-Excel</button>`;
   renderCrates(view.querySelector("#crates"));
   if (animate) countUp(view);
 }
@@ -158,12 +170,13 @@ export function renderDashboard(view, user) {
       <div class="toolbar">
         <label class="search">
           ${icon("search")}
-          <input type="search" id="crate-search" placeholder="חיפוש ארגז או פריט…" value="${esc(state.query)}" aria-label="חיפוש ארגז או פריט">
+          <input type="search" id="crate-search" placeholder="חיפוש ארגז, פריט או מ. צלם…" value="${esc(state.query)}" aria-label="חיפוש ארגז, פריט או מ. צלם">
         </label>
         <div class="chips" role="group" aria-label="סינון לפי סטטוס">
           ${[["all", "הכל"], ["ok", "תקין"], ["warn", "התראה"], ["danger", "חוסר"]].map(([k, l]) =>
             `<button type="button" class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
         </div>
+        <div class="page-actions" id="crate-actions"></div>
       </div>
       <div class="crates" id="crates"></div>
     </section>`;
@@ -184,6 +197,11 @@ export function renderDashboard(view, user) {
   });
 
   const open = (e) => {
+    if (e.target.closest('[data-act="add-crate"]')) {
+      return openCrateForm(null, (id) => openCrate(store.crates.find((c) => c.id === id)));
+    }
+    if (e.target.closest('[data-act="count-all"]')) return openCountSequence();
+    if (e.target.closest('[data-act="export"]')) return openExportForm();
     const el = e.target.closest("[data-crate]");
     if (el) openCrate(store.crates.find((c) => c.id === el.dataset.crate));
   };
@@ -202,6 +220,19 @@ export function openCrate(c) {
   const dlg = document.getElementById("crate-dialog");
   fillCrate(dlg, c, true);
   bindDialog(dlg, (e) => {
+    const crate = store.crates.find((x) => x.id === dlg.dataset.crate);
+    const act = e.target.closest("[data-act]");
+    if (act && crate) {
+      const itemId = act.dataset.item;
+      switch (act.dataset.act) {
+        case "add-item": return openItemForm(crate);
+        case "count": return openCountForm(crate);
+        case "edit-crate": return openCrateForm(crate);
+        case "delete-crate": return openDeleteCrateForm(crate);
+        case "edit-item": return openItemForm(crate, findItem(itemId)?.item);
+        case "delete-item": return openDeleteItemForm(itemId);
+      }
+    }
     const sign = e.target.closest("[data-sign]");
     if (sign) return openSignForm({ itemId: sign.dataset.sign });
     const ret = e.target.closest("[data-return]");
@@ -224,12 +255,19 @@ function fillCrate(dlg, c, animate) {
       <span class="crate__stencil">ארגז ${esc(c.number)}</span>
       <div class="cd__titles">
         <h2 id="crate-dialog-title">${esc(c.name)}</h2>
-        <p>${esc(c.category)} · ${esc(c.location)}</p>
+        <p>${[crateMeta(c), `${lastCount(c)}${c.lastCountBy ? ` ע״י ${esc(c.lastCountBy)}` : ""}`].filter(Boolean).join(" · ")}</p>
       </div>
       <span class="pill pill--${c.status}">${STATUS[c.status].label}</span>
       <button type="button" class="btn btn--icon" data-close aria-label="סגירה">${icon("close", "btn__icon")}</button>
     </header>
     <div class="cd__body">
+      ${edit ? `
+      <div class="page-actions cd__actions">
+        <button type="button" class="btn btn--primary btn--sm" data-act="add-item">הוספת פריט</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-act="count">ספירת מלאי</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-act="edit-crate">עריכת ארגז</button>
+        <button type="button" class="btn btn--ghost btn--sm" data-act="delete-crate">מחיקת ארגז</button>
+      </div>` : ""}
       <div class="cd__summary">
         <div><span>סוגי פריטים</span><strong>${c.itemTypes}</strong></div>
         <div><span>סה״כ פריטים</span><strong>${c.total}</strong></div>
@@ -259,8 +297,14 @@ function fillCrate(dlg, c, animate) {
               <span>סה״כ <b>${i.total}</b></span>
             </div>
             <div class="item__min ${i.short ? "is-short" : ""}">מינימום נדרש: ${i.min}${i.short ? ` · חסרים ${i.short}` : ""}</div>
-            ${edit && i.available > 0 ? `<button type="button" class="btn btn--primary btn--sm item__sign" data-sign="${esc(i.id)}">החתמה</button>` : ""}
-          </div>`).join("")}
+            ${i.serial ? `<div class="item__serial">מ. צלם: <span dir="ltr">${esc(i.serial)}</span></div>` : ""}
+            ${edit ? `
+            <div class="item__actions">
+              ${i.available > 0 ? `<button type="button" class="btn btn--primary btn--sm" data-sign="${esc(i.id)}">החתמה</button>` : ""}
+              <button type="button" class="btn btn--ghost btn--sm" data-act="edit-item" data-item="${esc(i.id)}">עריכה</button>
+              ${i.withSoldiers ? "" : `<button type="button" class="btn btn--ghost btn--sm" data-act="delete-item" data-item="${esc(i.id)}">מחיקה</button>`}
+            </div>` : ""}
+          </div>`).join("") || `<p class="muted">אין עדיין פריטים בארגז זה</p>`}
       </div>
 
       <h3 class="section-title">${icon("users", "alert__icon")} מוחתם אצל חיילים</h3>
