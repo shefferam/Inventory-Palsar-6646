@@ -27,9 +27,16 @@ export function createAdapter() {
   let version = null;
   let last = null;
   let timer = null;
+  let failed = false;
 
   const emit = (r) => {
-    if (!r?.snapshot) return;
+    const recovered = failed;
+    failed = false;
+    // After a connection error, re-deliver unchanged data so the screens know they are live again.
+    if (!r?.snapshot) {
+      if (recovered && last) listeners.forEach((l) => l.onData(last));
+      return;
+    }
     version = r.version;
     last = { ...r.snapshot, me: r.me };
     listeners.forEach((l) => l.onData(last));
@@ -40,6 +47,7 @@ export function createAdapter() {
     try {
       emit(await call("snapshot", { since: version }));
     } catch (err) {
+      failed = true;
       listeners.forEach((l) => l.onError(err));
       if (err.code === 401 || err.code === 403) return;
     }
@@ -48,6 +56,9 @@ export function createAdapter() {
 
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && listeners.size) poll();
+  });
+  window.addEventListener("online", () => {
+    if (listeners.size) poll();
   });
 
   // Every write returns the fresh snapshot, so the writer sees the result immediately.
@@ -79,10 +90,22 @@ export function createAdapter() {
       };
     },
 
-    adjustAssignment: (itemId, soldierId, delta) => write("adjustAssignment", { itemId, soldierId, delta }),
+    adjustAssignment: (itemId, soldierId, delta, meta) => write("adjustAssignment", { itemId, soldierId, delta, note: meta?.note ?? "" }),
+    adjustAssignments: (changes, meta) => write("adjustAssignments", { changes, note: meta?.note ?? "" }),
+    setNotes: (soldierId, itemIds, note) => write("setNotes", { soldierId, itemIds, note }),
     upsertSoldiers: (soldiers) => write("upsertSoldiers", { soldiers }),
-    deleteSoldier: (id) => write("deleteSoldier", { id }),
+    deleteSoldier: (id, name) => write("deleteSoldier", { id, name }),
+    upsertCrate: (crate) => write("upsertCrate", { crate }),
+    deleteCrate: (id, name) => write("deleteCrate", { id, name }),
+    addItem: (item) => write("addItem", { item }),
     updateItem: (id, patch) => write("updateItem", { id, patch }),
+    deleteItem: (id, name) => write("deleteItem", { id, name }),
+    recordCount: (payload) => write("recordCount", payload),
     replaceAll: (snapshot) => write("replaceAll", { snapshot }),
+    getHistory: (limit) => call("history", { limit }),
+    listUsers: () => call("listUsers"),
+    saveUser: (email, role) => write("saveUser", { email, role }),
+    deleteUser: (email) => write("deleteUser", { email }),
+    sendSignEmail: (soldierId, items) => write("sendSignEmail", { soldierId, items }),
   };
 }

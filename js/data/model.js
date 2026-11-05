@@ -6,6 +6,9 @@ export const STATUS = {
   danger: { label: "חוסר", rank: 2 },
 };
 
+export const ROLES = ["viewer", "editor", "admin"];
+export const ROLE_LABEL = { viewer: "צפייה", editor: "עריכה", admin: "מנהל" };
+
 export const teamLabel = (t) => (/^\d+$/.test(t) ? `צוות ${t}` : t || "ללא צוות");
 export const fullName = (s) => `${s.firstName} ${s.lastName}`.trim();
 
@@ -69,7 +72,7 @@ export function buildView({ crates, items, soldiers, assignments }) {
   for (const a of active) {
     const ref = itemIndex.get(a.itemId);
     if (!ref) continue;
-    const row = { itemId: a.itemId, name: ref.item.name, crateNumber: ref.crate.number, crateName: ref.crate.name, qty: a.qty, signedAt: a.signedAt, signedBy: a.signedBy };
+    const row = { itemId: a.itemId, name: ref.item.name, serial: ref.item.serial, crateNumber: ref.crate.number, crateName: ref.crate.name, qty: a.qty, signedAt: a.signedAt, signedBy: a.signedBy, note: a.note };
     signedBySoldier.set(a.soldierId, [...(signedBySoldier.get(a.soldierId) ?? []), row]);
   }
   const builtSoldiers = [...soldierById.values()]

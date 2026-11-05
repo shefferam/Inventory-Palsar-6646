@@ -32,17 +32,24 @@ export async function createAdapter() {
     },
 
     adjustAssignment(itemId, soldierId, delta, meta) {
-      const ref = fs.doc(db, "assignments", assignmentId(itemId, soldierId));
+      return this.adjustAssignments([{ itemId, soldierId, delta }], meta);
+    },
+
+    adjustAssignments(changes, meta) {
+      const refs = changes.map((c) => fs.doc(db, "assignments", assignmentId(c.itemId, c.soldierId)));
       return fs.runTransaction(db, async (tx) => {
-        const cur = await tx.get(ref);
-        const prev = cur.exists() ? cur.data() : null;
-        const qty = (prev?.qty ?? 0) + delta;
-        if (qty < 0) throw new Error("לא ניתן לזכות יותר ממה שהוחתם");
-        if (qty === 0) return tx.delete(ref);
-        tx.set(ref, {
-          itemId, soldierId, qty,
-          signedAt: delta > 0 ? meta.at : prev.signedAt,
-          signedBy: delta > 0 ? meta.by : prev.signedBy,
+        const snaps = await Promise.all(refs.map((r) => tx.get(r)));
+        changes.forEach(({ itemId, soldierId, delta }, i) => {
+          const prev = snaps[i].exists() ? snaps[i].data() : null;
+          const qty = (prev?.qty ?? 0) + delta;
+          if (qty < 0) throw new Error("לא ניתן לזכות יותר ממה שהוחתם");
+          if (qty === 0) return tx.delete(refs[i]);
+          tx.set(refs[i], {
+            itemId, soldierId, qty,
+            signedAt: delta > 0 ? meta.at : prev.signedAt,
+            signedBy: delta > 0 ? meta.by : prev.signedBy,
+            note: delta > 0 && "note" in meta ? meta.note : prev?.note ?? "",
+          });
         });
       });
     },
@@ -59,8 +66,50 @@ export async function createAdapter() {
       return fs.deleteDoc(fs.doc(db, "soldiers", id));
     },
 
+    upsertCrate({ id, ...data }) {
+      return fs.setDoc(fs.doc(db, "crates", id), data);
+    },
+
+    async deleteCrate(id) {
+      const items = await fs.getDocs(fs.query(fs.collection(db, "items"), fs.where("crateId", "==", id)));
+      const batch = fs.writeBatch(db);
+      items.docs.forEach((d) => batch.delete(d.ref));
+      batch.delete(fs.doc(db, "crates", id));
+      return batch.commit();
+    },
+
+    addItem({ id, ...data }) {
+      return fs.setDoc(fs.doc(db, "items", id), data);
+    },
+
     updateItem(itemId, patch) {
       return fs.updateDoc(fs.doc(db, "items", itemId), patch);
+    },
+
+    deleteItem(id) {
+      return fs.deleteDoc(fs.doc(db, "items", id));
+    },
+
+    setNotes(soldierId, itemIds, note) {
+      const batch = fs.writeBatch(db);
+      itemIds.forEach((itemId) => batch.update(fs.doc(db, "assignments", assignmentId(itemId, soldierId)), { note }));
+      return batch.commit();
+    },
+
+    recordCount({ crateId, apply, items }, meta) {
+      const batch = fs.writeBatch(db);
+      batch.update(fs.doc(db, "crates", crateId), { lastCountAt: meta.at, lastCountBy: meta.by });
+      if (apply) items.forEach(({ id, total, faulty }) => batch.update(fs.doc(db, "items", id), { total, faulty }));
+      return batch.commit();
+    },
+
+    appendLog(entry) {
+      return fs.addDoc(fs.collection(db, "log"), entry);
+    },
+
+    async getHistory(limit) {
+      const q = fs.query(fs.collection(db, "log"), fs.orderBy("at", "desc"), fs.limit(limit));
+      return (await fs.getDocs(q)).docs.map((d) => d.data());
     },
 
     async replaceAll(snapshot) {
