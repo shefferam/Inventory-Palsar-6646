@@ -7,7 +7,12 @@
   <meta name="description" content="פלס״ר 6646 – מערכת ניהול ציוד ומלאי">
   <title>פלס״ר 6646 · מערכת ניהול ציוד ומלאי</title>
   <link rel="icon" type="image/jpeg" href="assets/Palsar.jpeg" id="favicon">
-  <link rel="apple-touch-icon" href="assets/Palsar.jpeg" id="touch-icon">
+  <link rel="apple-touch-icon" href="assets/icon-192.png" id="touch-icon">
+  <link rel="manifest" href="manifest.json">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="פלס״ר 6646">
   <link rel="stylesheet" href="css/styles.css">
   <script type="module" src="js/app.js"></script>
 </head>
@@ -49,6 +54,7 @@
       <div class="gis-button" id="gis-button" hidden></div>
       <p class="login__error" id="login-error" role="alert" hidden></p>
       <button type="button" class="btn btn--link" id="demo-login" hidden>כניסה במצב הדגמה</button>
+      <button type="button" class="btn btn--ghost" id="offline-login" hidden>אין חיבור – צפייה בנתונים שנשמרו במכשיר</button>
       <p class="login__note" id="login-note" hidden>התחברות Google טרם הוגדרה (GOOGLE_CLIENT_ID בקובץ js/config.js).</p>
     </div>
   </main>
@@ -66,13 +72,17 @@
       <nav class="nav" aria-label="ניווט ראשי">
         <a href="#/dashboard" data-route="dashboard">דשבורד</a>
         <a href="#/soldiers" data-route="soldiers">חיילים</a>
+        <a href="#/history" data-route="history">היסטוריה</a>
+        <a href="#/users" data-route="users" id="nav-users" hidden>משתמשים</a>
         <a href="#/about" data-route="about">אודות</a>
       </nav>
       <div class="user">
         <span class="user__name" id="user-name"></span>
+        <button type="button" class="btn btn--icon btn--theme" id="theme-toggle"></button>
         <button type="button" class="btn btn--ghost btn--sm" id="logout">יציאה</button>
       </div>
     </header>
+    <p class="offline-banner" id="offline-banner" role="status" hidden></p>
     <main id="view" class="view" tabindex="-1"></main>
   </div>
 
@@ -80,5 +90,6 @@
   <dialog id="soldier-dialog" class="crate-dialog soldier-dialog" aria-labelledby="soldier-dialog-title"></dialog>
   <dialog id="form-dialog" class="form-dialog" aria-label="טופס"></dialog>
   <div id="toasts" class="toasts" aria-live="polite"></div>
+  <div id="print-area" class="print-area"></div>
 </body>
 </html>
