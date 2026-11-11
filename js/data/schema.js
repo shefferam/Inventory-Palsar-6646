@@ -1,16 +1,19 @@
 // Backend-neutral schema. Mirrors 1:1 to Google Sheets tabs, Firestore collections or SQL tables:
-//   crates      { id, number, name, category, location, lastCountAt, lastCountBy }
-//   items       { id, crateId, name, total, faulty, min, serial }  – serial = מ. צלם (equipment serial numbers)
+//   crates      { id, number, name, category, location, lastCountAt, lastCountBy, receivedFrom, returnBy }
+//                 receivedFrom = equipment signed to us by another unit (must be returned by returnBy, YYYY-MM-DD)
+//   items       { id, crateId, name, total, faulty, min, serial, consumable }  – serial = מ. צלם (equipment serial numbers)
 //   soldiers    { id, firstName, lastName, team, email }          – no personal numbers, by design
 //   assignments { id, itemId, soldierId, qty, signedAt, signedBy, note } – equipment signed to a soldier
+//   issues      { id, itemId, soldierId, recipient, qty, issuedAt, issuedBy, note } – consumables handed out (not returned)
 // Only whitelisted fields pass in either direction, so extra personal data stored in a
 // central DB never reaches the UI.
 
 const FIELDS = {
-  crates: { id: "id", number: "text", name: "text", category: "text", location: "text", lastCountAt: "text", lastCountBy: "text" },
-  items: { id: "id", crateId: "id", name: "text", total: "qty", faulty: "qty", min: "qty", serial: "serial" },
+  crates: { id: "id", number: "text", name: "text", category: "text", location: "text", lastCountAt: "text", lastCountBy: "text", receivedFrom: "text", returnBy: "text" },
+  items: { id: "id", crateId: "id", name: "text", total: "qty", faulty: "qty", min: "qty", serial: "serial", consumable: "flag" },
   soldiers: { id: "id", firstName: "text", lastName: "text", team: "text", email: "email" },
   assignments: { id: "id", itemId: "id", soldierId: "id", qty: "qty", signedAt: "text", signedBy: "text", note: "text" },
+  issues: { id: "id", itemId: "id", soldierId: "id", recipient: "text", qty: "qty", issuedAt: "text", issuedBy: "text", note: "text" },
 };
 
 // IDF personal numbers are 7 digits; block any long digit run in free text.
@@ -26,6 +29,8 @@ const SERIAL_MAX = 300;
 export class ValidationError extends Error {}
 
 const toQty = (v) => Math.max(0, Math.floor(Number(v) || 0));
+// Sheets may return a real boolean or the text "TRUE" (text-formatted column).
+const toFlag = (v) => v === true || v === 1 || /^(true|1)$/i.test(String(v ?? "").trim());
 const redact = (s) => s.replace(new RegExp(PERSONAL_ID, "g"), "•••");
 const toEmail = (v) => {
   const s = String(v ?? "").trim().toLowerCase();
@@ -44,6 +49,7 @@ function cleanRecord(kind, rec) {
       : type === "text" ? redact(String(v ?? "").trim())
       : type === "email" ? toEmail(v)
       : type === "serial" ? toSerial(v)
+      : type === "flag" ? toFlag(v)
       : String(v ?? "");
   }
   return out;
@@ -83,6 +89,13 @@ export function assertEmail(value, { optional = false } = {}) {
   const s = String(value ?? "").trim().toLowerCase();
   if (!s && optional) return "";
   if (!EMAIL.test(s) || s.length > 120) throw new ValidationError("כתובת מייל לא תקינה");
+  return s;
+}
+
+/** Optional calendar date, YYYY-MM-DD (as produced by <input type="date">). */
+export function assertDate(value, label = "תאריך") {
+  const s = String(value ?? "").trim();
+  if (s && !/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new ValidationError(`${label} לא תקין`);
   return s;
 }
 

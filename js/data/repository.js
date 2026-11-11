@@ -6,6 +6,7 @@
 //   subscribe(onData, onError): () => void                 // emits full snapshot (+ me: { role })
 //   adjustAssignment(itemId, soldierId, delta, meta)      // + sign out / − return, meta = { at, by, note }
 //   adjustAssignments(changes, meta)                       // several { itemId, soldierId, delta } at once
+//   issueItems(issues, meta)                               // consumables: lower item.total and record each { id, itemId, soldierId, recipient, qty }
 //   setNotes(soldierId, itemIds, note)                     // edit the note on items the soldier already holds
 //   upsertSoldiers(list), deleteSoldier(id, label)
 //   upsertCrate(crate), deleteCrate(id, label)             // deleteCrate also removes the crate's items
@@ -19,7 +20,7 @@
 import { DATA_BACKEND } from "../config.js";
 import { buildView, fullName, ROLES } from "./model.js";
 import {
-  assertEmail, assertQty, assertSafeText, assertSerial, assertSnapshotSafe, newId, sanitizeSnapshot, ValidationError,
+  assertDate, assertEmail, assertQty, assertSafeText, assertSerial, assertSnapshotSafe, newId, sanitizeSnapshot, ValidationError,
 } from "./schema.js";
 
 const ADAPTERS = {
@@ -131,10 +132,14 @@ const assignedQty = (itemId) =>
   current.assignments.filter((a) => a.itemId === itemId).reduce((s, a) => s + a.qty, 0);
 const heldQty = (itemId, soldierId) =>
   current.assignments.filter((a) => a.itemId === itemId && a.soldierId === soldierId).reduce((s, a) => s + a.qty, 0);
+const notConsumable = (item) => {
+  if (item.consumable) throw new ValidationError(`${item.name} הוא ציוד מתכלה – יש להשתמש בניפוק`);
+  return item;
+};
 
 /** החתמה – sign equipment out to a soldier, with an optional free-text note. */
 export async function signItem(itemId, soldierId, qty, note = "") {
-  const item = findItem(itemId);
+  const item = notConsumable(findItem(itemId));
   findSoldier(soldierId);
   const n = assertQty(qty);
   if (n < 1) throw new ValidationError("יש להזין כמות של 1 לפחות");
@@ -153,7 +158,7 @@ export async function signItems(soldierId, lines, note = "") {
   for (const { itemId, qty } of lines) {
     const n = assertQty(qty);
     if (!n) continue;
-    const item = findItem(itemId);
+    const item = notConsumable(findItem(itemId));
     const available = item.total - item.faulty - assignedQty(itemId);
     if (n > available) throw new ValidationError(`${item.name}: זמינים להחתמה רק ${Math.max(0, available)}`);
     changes.push({ itemId, soldierId, delta: n });
@@ -161,6 +166,34 @@ export async function signItems(soldierId, lines, note = "") {
   if (!changes.length) throw new ValidationError("לא נבחרו פריטים להחתמה");
   await write("adjustAssignments", { changes, note: text }, (a) => a.adjustAssignments(changes, { ...meta(), note: text }));
   return changes.reduce((s, c) => s + c.delta, 0);
+}
+
+function issueLines(soldierId, lines) {
+  const s = findSoldier(soldierId);
+  const issues = [];
+  for (const { itemId, qty } of lines) {
+    const n = assertQty(qty);
+    if (!n) continue;
+    const item = findItem(itemId);
+    if (!item.consumable) throw new ValidationError(`${item.name} אינו ציוד מתכלה`);
+    const available = item.total - item.faulty - assignedQty(itemId);
+    if (n > available) throw new ValidationError(`${item.name}: זמינים לניפוק רק ${Math.max(0, available)}`);
+    issues.push({ id: newId("x"), itemId, soldierId, recipient: fullName(s), qty: n });
+  }
+  if (!issues.length) throw new ValidationError("לא נבחרו פריטים לניפוק");
+  return issues;
+}
+
+/** Validates a consumables hand-out without writing (lets a combined kit form fail before anything is saved). */
+export const checkIssue = (soldierId, lines) => void issueLines(soldierId, lines);
+
+/** ניפוק ציוד מתכלה – leaves the crate for good; recorded on the crate, not on the soldier. lines: [{ itemId, qty }] */
+export async function issueItems(soldierId, lines, note = "") {
+  const text = cleanNote(note);
+  const issues = issueLines(soldierId, lines);
+  const details = { issues: issues.map(({ itemId, qty }) => ({ itemId, soldierId, qty })), note: text };
+  await write("issueItems", details, (a) => a.issueItems(issues, { ...meta(), note: text }));
+  return issues.reduce((s, x) => s + x.qty, 0);
 }
 
 /** Edits the note on items the soldier already holds (empty note clears it). */
@@ -259,7 +292,10 @@ export async function saveCrate(crate) {
     location: assertSafeText(crate.location, "מיקום", { optional: true }),
     lastCountAt: prev?.lastCountAt ?? "",
     lastCountBy: prev?.lastCountBy ?? "",
+    receivedFrom: assertSafeText(crate.receivedFrom, "התקבל מ", { optional: true, max: 60 }),
+    returnBy: "",
   };
+  if (clean.receivedFrom) clean.returnBy = assertDate(crate.returnBy, "תאריך החזרה");
   if (ready().crates.some((c) => c.id !== clean.id && c.number === clean.number)) {
     throw new ValidationError(`ארגז מספר ${clean.number} כבר קיים`);
   }
@@ -287,6 +323,7 @@ export async function addItem(crateId, data) {
     faulty: assertQty(data.faulty, "כמות תקולה"),
     min: assertQty(data.min, "כמות מינימום"),
     serial: assertSerial(data.serial),
+    consumable: Boolean(data.consumable),
   };
   if (item.faulty > item.total) throw new ValidationError("כמות התקולים גדולה מהכמות הכוללת");
   return write("addItem", { item }, (a) => a.addItem(item));
@@ -304,8 +341,12 @@ export async function updateItem(itemId, patch) {
   if ("name" in patch) clean.name = assertSafeText(patch.name, "שם פריט");
   for (const f of ["total", "faulty", "min"]) if (f in patch) clean[f] = assertQty(patch[f]);
   if ("serial" in patch) clean.serial = assertSerial(patch.serial);
+  if ("consumable" in patch) clean.consumable = Boolean(patch.consumable);
   if (patch.crateId && patch.crateId !== item.crateId) clean.crateId = findCrate(patch.crateId).id;
   const next = { ...item, ...clean };
+  if (next.consumable && !item.consumable && assignedQty(itemId) > 0) {
+    throw new ValidationError("לא ניתן להגדיר כמתכלה פריט שמוחתם אצל חיילים – יש לזכות קודם");
+  }
   if (assignedQty(itemId) + next.faulty > next.total) {
     throw new ValidationError("סה״כ הכמות קטן מהכמות המוחתמת והתקולה");
   }

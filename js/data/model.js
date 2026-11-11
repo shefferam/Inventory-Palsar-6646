@@ -21,14 +21,18 @@ export function compareTeams(a, b) {
 }
 const compareSoldiers = (a, b) => compareTeams(a.team, b.team) || a.name.localeCompare(b.name, "he");
 
-function buildItem(item, holders) {
+function buildItem(item, holders, issues) {
   const withSoldiers = holders.reduce((a, h) => a + h.qty, 0);
   const available = Math.max(0, item.total - withSoldiers - item.faulty);
   let status = "ok";
   if (item.min > 0 && available === 0) status = "danger";
   else if (available < item.min || item.faulty > 0) status = "warn";
-  return { ...item, holders, withSoldiers, available, status, short: Math.max(0, item.min - available) };
+  const issuedQty = issues.reduce((a, x) => a + x.qty, 0);
+  return { ...item, holders, issues, issuedQty, withSoldiers, available, status, short: Math.max(0, item.min - available) };
 }
+
+const today = () => new Date().toLocaleDateString("sv-SE"); // local YYYY-MM-DD
+const byNewest = (a, b) => String(b.issuedAt).localeCompare(String(a.issuedAt));
 
 function buildCrate(crate, items) {
   const sum = (k) => items.reduce((a, i) => a + i[k], 0);
@@ -42,11 +46,14 @@ function buildCrate(crate, items) {
     withSoldiers: sum("withSoldiers"),
     faulty: sum("faulty"),
     shortages: items.filter((i) => i.short > 0),
+    issues: items.flatMap((i) => i.issues.map((x) => ({ ...x, itemName: i.name }))).sort(byNewest),
+    received: Boolean(crate.receivedFrom),
+    overdue: Boolean(crate.receivedFrom && crate.returnBy && crate.returnBy < today()),
     status,
   };
 }
 
-export function buildView({ crates, items, soldiers, assignments }) {
+export function buildView({ crates, items, soldiers, assignments, issues = [] }) {
   const soldierById = new Map(soldiers.map((s) => [s.id, { ...s, name: fullName(s) }]));
   const active = assignments.filter((a) => a.qty > 0);
 
@@ -57,9 +64,18 @@ export function buildView({ crates, items, soldiers, assignments }) {
     holdersByItem.set(a.itemId, [...(holdersByItem.get(a.itemId) ?? []), h]);
   }
 
+  // Consumables handed out: recorded on the crate only, never on the soldier.
+  const issuesByItem = new Map();
+  for (const x of [...issues].sort(byNewest)) {
+    const s = soldierById.get(x.soldierId);
+    const row = { ...x, name: s?.name ?? (x.recipient || "חייל שנמחק"), team: s ? s.team : null };
+    issuesByItem.set(x.itemId, [...(issuesByItem.get(x.itemId) ?? []), row]);
+  }
+
   const itemsByCrate = new Map();
   for (const i of items) {
-    itemsByCrate.set(i.crateId, [...(itemsByCrate.get(i.crateId) ?? []), buildItem(i, holdersByItem.get(i.id) ?? [])]);
+    const built = buildItem(i, holdersByItem.get(i.id) ?? [], issuesByItem.get(i.id) ?? []);
+    itemsByCrate.set(i.crateId, [...(itemsByCrate.get(i.crateId) ?? []), built]);
   }
   const builtCrates = crates
     .map((c) => buildCrate(c, itemsByCrate.get(c.id) ?? []))
@@ -82,7 +98,7 @@ export function buildView({ crates, items, soldiers, assignments }) {
     })
     .sort(compareSoldiers);
 
-  return { crates: builtCrates, soldiers: builtSoldiers };
+  return { crates: builtCrates, soldiers: builtSoldiers, issues: builtCrates.flatMap((c) => c.issues.map((x) => ({ ...x, crateNumber: c.number }))) };
 }
 
 /** Soldiers holding items from a crate, each with the items they signed for. */

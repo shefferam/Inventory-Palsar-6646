@@ -2,7 +2,7 @@ import { buildSeed } from "./seed.js";
 import { assignmentId } from "./schema.js";
 
 const KEY = "palsar.db.v2";
-const TABLES = ["crates", "items", "soldiers", "assignments"];
+const TABLES = ["crates", "items", "soldiers", "assignments", "issues"];
 const LOG_LIMIT = 500;
 
 function applyDelta(db, itemId, soldierId, delta, meta) {
@@ -69,6 +69,19 @@ export function createAdapter() {
     async adjustAssignments(changes, meta) {
       const db = read();
       changes.forEach((c) => applyDelta(db, c.itemId, c.soldierId, c.delta, meta));
+      commit(db);
+    },
+
+    async issueItems(issues, meta) {
+      const db = read();
+      for (const x of issues) {
+        const item = db.items.find((i) => i.id === x.itemId);
+        if (!item) throw new Error(`Item not found: ${x.itemId}`);
+        const assigned = db.assignments.filter((a) => a.itemId === x.itemId).reduce((s, a) => s + a.qty, 0);
+        if (x.qty > item.total - item.faulty - assigned) throw new Error(`${item.name}: אין מספיק במלאי`);
+        item.total -= x.qty;
+        db.issues.push({ ...x, issuedAt: meta.at, issuedBy: meta.by, note: meta.note ?? "" });
+      }
       commit(db);
     },
 

@@ -1,7 +1,7 @@
 import { loadFirebaseApp, SDK } from "../firebase.js";
 import { assignmentId } from "./schema.js";
 
-const COLLECTIONS = ["crates", "items", "soldiers", "assignments"];
+const COLLECTIONS = ["crates", "items", "soldiers", "assignments", "issues"];
 const BATCH_LIMIT = 450; // Firestore allows 500 writes per batch
 
 /** Shared cloud database. Same contract as local-adapter.js; access is enforced by firestore.rules. */
@@ -51,6 +51,23 @@ export async function createAdapter() {
             note: delta > 0 && "note" in meta ? meta.note : prev?.note ?? "",
           });
         });
+      });
+    },
+
+    // Consumables are never signed to soldiers, so total − faulty is what's in stock.
+    issueItems(issues, meta) {
+      return fs.runTransaction(db, async (tx) => {
+        const refs = issues.map((x) => fs.doc(db, "items", x.itemId));
+        const snaps = await Promise.all(refs.map((r) => tx.get(r)));
+        snaps.forEach((snap, i) => {
+          const item = snap.data();
+          if (!item) throw new Error("הפריט לא נמצא");
+          if (issues[i].qty > item.total - item.faulty) throw new Error(`${item.name}: אין מספיק במלאי`);
+        });
+        snaps.forEach((snap, i) => tx.update(refs[i], { total: snap.data().total - issues[i].qty }));
+        for (const { id, ...x } of issues) {
+          tx.set(fs.doc(db, "issues", id), { ...x, issuedAt: meta.at, issuedBy: meta.by, note: meta.note ?? "" });
+        }
       });
     },
 

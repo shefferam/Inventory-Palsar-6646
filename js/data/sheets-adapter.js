@@ -92,6 +92,10 @@ export function createAdapter() {
 
     adjustAssignment: (itemId, soldierId, delta, meta) => write("adjustAssignment", { itemId, soldierId, delta, note: meta?.note ?? "" }),
     adjustAssignments: (changes, meta) => write("adjustAssignments", { changes, note: meta?.note ?? "" }),
+    // The server derives recipient, time and user itself.
+    issueItems: (issues, meta) => write("issueItems", {
+      issues: issues.map(({ itemId, soldierId, qty }) => ({ itemId, soldierId, qty })), note: meta?.note ?? "",
+    }),
     setNotes: (soldierId, itemIds, note) => write("setNotes", { soldierId, itemIds, note }),
     upsertSoldiers: (soldiers) => write("upsertSoldiers", { soldiers }),
     deleteSoldier: (id, name) => write("deleteSoldier", { id, name }),
