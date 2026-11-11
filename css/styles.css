@@ -1167,7 +1167,7 @@ html.no-emblem .splash__content::before { display: none !important; }
 .issues { display: grid; gap: .35rem; margin: 0 0 1rem; padding: 0; list-style: none; }
 .issues__row {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  grid-template-columns: 7rem minmax(0, 1fr) auto;
   align-items: baseline;
   gap: .3rem .8rem;
   padding: .5rem .8rem;
@@ -1178,6 +1178,7 @@ html.no-emblem .splash__content::before { display: none !important; }
   font-size: .88rem;
 }
 .issues__date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.issues__date small { display: block; font-size: .72rem; }
 .issues__main { min-width: 0; }
 .issues__main small { display: block; font-size: .78rem; }
 .issues__by { color: var(--muted); font-size: .78rem; direction: ltr; overflow-wrap: anywhere; }
@@ -1271,7 +1272,7 @@ html.no-emblem .splash__content::before { display: none !important; }
   .hist__row { grid-template-columns: 3rem minmax(0, 1fr); }
   .hist__by { grid-column: 2; }
   .select { flex: 1 1 100%; max-width: none; }
-  .issues__row { grid-template-columns: 4.8rem minmax(0, 1fr); }
+  .issues__row { grid-template-columns: 6.2rem minmax(0, 1fr); }
   .issues__by { grid-column: 2; }
 }
 @keyframes sheet-in { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
