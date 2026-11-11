@@ -1,7 +1,7 @@
 import * as repo from "./data/repository.js";
 import { fullName, ROLE_LABEL } from "./data/model.js";
 import { store } from "./state.js";
-import { esc, icon } from "./ui.js";
+import { esc, hebrewDate, icon } from "./ui.js";
 
 const LIMIT = 300;
 const KINDS = [
@@ -92,7 +92,8 @@ function describe(e, n) {
   }
 }
 
-const day = (iso) => new Date(iso).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+const day = (iso) =>
+  `${new Date(iso).toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", year: "numeric" })} · ${hebrewDate(iso)}`;
 const time = (iso) => new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit" });
 
 // ---------- Screen ----------

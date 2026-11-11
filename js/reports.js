@@ -1,5 +1,5 @@
 import { compareTeams, STATUS, teamLabel } from "./data/model.js";
-import { fmtDate } from "./actions.js";
+import { fmtDate, fmtDateHe } from "./actions.js";
 import { openForm } from "./dialogs.js";
 import { store } from "./state.js";
 import { EMBLEM_SRC, esc } from "./ui.js";
@@ -150,7 +150,7 @@ export async function printSoldierForm(soldierId) {
           <h1>טופס החתמת ציוד</h1>
           <p>פלס"ר 6646 · מערכת ניהול ציוד ומלאי</p>
         </div>
-        <p class="sheet__date">תאריך: ${fmtDate(now.toISOString())}</p>
+        <p class="sheet__date">תאריך: ${fmtDateHe(now.toISOString())}</p>
       </header>
 
       <dl class="sheet__who">
@@ -170,7 +170,7 @@ export async function printSoldierForm(soldierId) {
             <td dir="ltr">${esc(x.serial ?? "")}</td>
             <td>${esc(x.crateNumber)} – ${esc(x.crateName)}</td>
             <td>${x.qty}</td>
-            <td>${x.signedAt ? fmtDate(x.signedAt) : ""}</td>
+            <td>${x.signedAt ? fmtDateHe(x.signedAt) : ""}</td>
             <td>${esc(x.signedBy)}</td>
             <td>${esc(x.note ?? "")}</td>
           </tr>`).join("")}

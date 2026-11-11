@@ -1,14 +1,14 @@
 import { holdersOf, ROLE_LABEL, STATUS, teamLabel } from "./data/model.js";
 import { backend } from "./data/repository.js";
 import {
-  fmtDate, openCountForm, openCountSequence, openCrateForm, openDeleteCrateForm, openDeleteItemForm, openItemForm,
+  fmtDate, fmtDateHe, openCountForm, openCountSequence, openCrateForm, openDeleteCrateForm, openDeleteItemForm, openItemForm,
   openReturnForm, openSignForm,
 } from "./actions.js";
 import { bindDialog, closeDialog } from "./dialogs.js";
 import { openExportForm } from "./reports.js";
 import { openSoldier } from "./soldiers.js";
 import { canEdit, findItem, store } from "./state.js";
-import { EMBLEM_SRC, esc, icon, reducedMotion } from "./ui.js";
+import { EMBLEM_SRC, esc, hebrewDate, icon, reducedMotion } from "./ui.js";
 
 const state = { filter: "all", query: "", name: "" };
 const ISSUES_SHOWN = 30;
@@ -54,9 +54,9 @@ function crateAlert(c) {
 }
 
 const crateMeta = (c) => [c.category, c.location].filter(Boolean).map(esc).join(" · ");
-const lastCount = (c) => (c.lastCountAt ? `נספר ב-${fmtDate(c.lastCountAt)}` : "טרם נספר");
+const lastCount = (c) => (c.lastCountAt ? `נספר ב-${fmtDateHe(c.lastCountAt)}` : "טרם נספר");
 const receivedText = (c) =>
-  `התקבל מ${esc(c.receivedFrom)}${c.returnBy ? ` · להחזיר עד ${fmtDate(c.returnBy)}` : " · להחזרה"}${c.overdue ? " · עבר המועד!" : ""}`;
+  `התקבל מ${esc(c.receivedFrom)}${c.returnBy ? ` · להחזיר עד ${fmtDateHe(c.returnBy)}` : " · להחזרה"}${c.overdue ? " · עבר המועד!" : ""}`;
 
 const crateCard = (c, i) => `
   <div class="crate crate--${c.status} ${c.received ? "crate--received" : ""}" role="button" tabindex="0" data-crate="${esc(c.id)}" style="--i:${i}"
@@ -170,12 +170,13 @@ function renderLive(view, animate) {
 
 export function renderDashboard(view, user) {
   const today = new Date().toLocaleDateString("he-IL", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const todayHe = hebrewDate(new Date());
   view.innerHTML = `
     <section class="hero">
       ${emblem("sm")}
       <div>
         <h1>שלום, ${esc(user.name)}</h1>
-        <p>${esc(today)} · תמונת מצב ציוד ומלאי</p>
+        <p>${esc(today)} · ${esc(todayHe)} · תמונת מצב ציוד ומלאי</p>
       </div>
     </section>
 
@@ -355,7 +356,7 @@ function fillCrate(dlg, c, animate) {
       <ul class="issues">
         ${issues.map((x) => `
           <li class="issues__row">
-            <span class="issues__date">${fmtDate(x.issuedAt)}</span>
+            <span class="issues__date">${fmtDate(x.issuedAt)}<small>${hebrewDate(x.issuedAt)}</small></span>
             <span class="issues__main"><b>${esc(x.itemName)} ×${x.qty}</b> ←
               ${x.team === null ? esc(x.name) : `<button type="button" class="holder__name" data-open-soldier="${esc(x.soldierId)}">${esc(x.name)}</button>`}
               ${x.team ? `<span class="muted">· ${esc(teamLabel(x.team))}</span>` : ""}

@@ -2,7 +2,7 @@ import * as repo from "./data/repository.js";
 import { teamLabel } from "./data/model.js";
 import { parseSoldierRows } from "./data/schema.js";
 import { bindDialog, closeDialog, openForm } from "./dialogs.js";
-import { fmtDate, openKitSignForm, openReturnForm } from "./actions.js";
+import { fmtDateHe, openKitSignForm, openReturnForm } from "./actions.js";
 import { printSoldierForm, teamSummary } from "./reports.js";
 import { canEdit, store } from "./state.js";
 import { esc, icon } from "./ui.js";
@@ -222,7 +222,7 @@ function fillSoldier(dlg, soldierId, animate) {
         <div class="signed__row" style="--i:${n}">
           <div class="signed__main">
             <strong>${esc(x.name)}</strong> <span class="signed__qty">×${x.qty}</span>
-            <small class="muted">ארגז ${esc(x.crateNumber)} – ${esc(x.crateName)}${x.signedAt ? ` · נחתם ${fmtDate(x.signedAt)}` : ""}${x.signedBy ? ` · ע״י ${esc(x.signedBy)}` : ""}</small>
+            <small class="muted">ארגז ${esc(x.crateNumber)} – ${esc(x.crateName)}${x.signedAt ? ` · נחתם ${fmtDateHe(x.signedAt)}` : ""}${x.signedBy ? ` · ע״י ${esc(x.signedBy)}` : ""}</small>
             ${x.note ? `<small class="signed__note">הערה: ${esc(x.note)}</small>` : ""}
           </div>
           ${edit ? `<button type="button" class="btn btn--ghost btn--sm" data-act="return" data-item="${esc(x.itemId)}">זיכוי</button>` : ""}

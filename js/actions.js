@@ -2,11 +2,17 @@ import * as repo from "./data/repository.js";
 import { compareTeams, teamLabel } from "./data/model.js";
 import { openForm } from "./dialogs.js";
 import { findItem, store } from "./state.js";
-import { esc, icon, toast } from "./ui.js";
+import { esc, hebrewDate, icon, toast } from "./ui.js";
 
 export const fmtDate = (iso) => {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString("he-IL", { day: "2-digit", month: "2-digit", year: "numeric" });
+};
+
+/** Gregorian date with the Hebrew date beside it, e.g. "11.11.2026 (א׳ בכסלו תשפ״ז)". */
+export const fmtDateHe = (iso) => {
+  const g = fmtDate(iso);
+  return g ? `${g} (${hebrewDate(iso)})` : "";
 };
 
 function soldierOptions(selected) {
@@ -204,7 +210,7 @@ function openMailDraft(soldierId, email, lines, note) {
   }).filter(Boolean);
   const body = [
     `שלום ${s?.firstName ?? ""},`, "",
-    `ב-${fmtDate(new Date().toISOString())} חתמת על הציוד הבא:`, ...list, "",
+    `ב-${fmtDateHe(new Date().toISOString())} חתמת על הציוד הבא:`, ...list, "",
     ...(String(note ?? "").trim() ? [`הערה: ${String(note).trim()}`, ""] : []),
     "יש לשמור על הציוד ולהחזירו בתום השימוש.", "",
     'פלס"ר 6646 – מערכת ניהול ציוד ומלאי',
@@ -451,7 +457,7 @@ export function openCountForm(crate, { queue = [], total = 1 } = {}) {
     wide: true,
     body: `
       <p class="form__lead"><b>${esc(crate.name)}</b> – ספרו את מה שנמצא פיזית בארגז (ללא ציוד שמוחתם אצל חיילים).</p>
-      ${crate.lastCountAt ? `<p class="form__hint">ספירה קודמת: ${fmtDate(crate.lastCountAt)}${crate.lastCountBy ? ` · ע״י ${esc(crate.lastCountBy)}` : ""}</p>` : ""}
+      ${crate.lastCountAt ? `<p class="form__hint">ספירה קודמת: ${fmtDateHe(crate.lastCountAt)}${crate.lastCountBy ? ` · ע״י ${esc(crate.lastCountBy)}` : ""}</p>` : ""}
       ${crate.items.length ? `
       <div class="count" role="table" aria-label="ספירת פריטים">
         <div class="count__row count__row--head" role="row">

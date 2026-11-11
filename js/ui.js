@@ -16,6 +16,33 @@ const ICONS = {
 export const icon = (name, cls = "") =>
   `<svg class="${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]}</svg>`;
 
+// ---------- Hebrew date ----------
+
+const ONES = ["", "א", "ב", "ג", "ד", "ה", "ו", "ז", "ח", "ט"];
+const TENS = ["", "י", "כ", "ל", "מ", "נ", "ס", "ע", "פ", "צ"];
+const HUNDREDS = ["", "ק", "ר", "ש", "ת"];
+const HEBREW_CAL = new Intl.DateTimeFormat("he-u-ca-hebrew", { day: "numeric", month: "long", year: "numeric" });
+
+/** 1–999 in Hebrew letters, e.g. 15 → ט״ו, 787 → תשפ״ז. */
+function gematria(n) {
+  let s = "";
+  let h = Math.floor(n / 100);
+  for (; h >= 4; h -= 4) s += "ת";
+  s += HUNDREDS[h];
+  const rest = n % 100;
+  // 15 and 16 are written ט״ו / ט״ז to avoid spelling the divine name.
+  s += rest === 15 ? "טו" : rest === 16 ? "טז" : TENS[Math.floor(rest / 10)] + ONES[rest % 10];
+  return s.length === 1 ? `${s}׳` : `${s.slice(0, -1)}״${s.slice(-1)}`;
+}
+
+/** e.g. "א׳ בכסלו תשפ״ז"; empty for an invalid date. */
+export function hebrewDate(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = Object.fromEntries(HEBREW_CAL.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${gematria(Number(p.day))} ב${p.month} ${gematria(Number(p.year) % 1000)}`;
+}
+
 // ---------- Light / dark theme ----------
 
 const THEME_KEY = "palsar.theme";
