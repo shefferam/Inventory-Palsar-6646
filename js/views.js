@@ -10,7 +10,9 @@ import { openSoldier } from "./soldiers.js";
 import { canEdit, findItem, store } from "./state.js";
 import { EMBLEM_SRC, esc, icon, reducedMotion } from "./ui.js";
 
-const state = { filter: "all", query: "" };
+const state = { filter: "all", query: "", name: "" };
+const ISSUES_SHOWN = 30;
+const FILTERS = [["all", "הכל"], ["ok", "תקין"], ["warn", "התראה"], ["danger", "חוסר"], ["received", "ציוד שהתקבל"]];
 const BACKEND_LABEL = { local: "מקומי – בדפדפן זה בלבד", sheets: "Google Sheets (משותף)", firestore: "Firestore (משותף)" };
 
 export function refreshDashboard(view, first) {
@@ -53,15 +55,18 @@ function crateAlert(c) {
 
 const crateMeta = (c) => [c.category, c.location].filter(Boolean).map(esc).join(" · ");
 const lastCount = (c) => (c.lastCountAt ? `נספר ב-${fmtDate(c.lastCountAt)}` : "טרם נספר");
+const receivedText = (c) =>
+  `התקבל מ${esc(c.receivedFrom)}${c.returnBy ? ` · להחזיר עד ${fmtDate(c.returnBy)}` : " · להחזרה"}${c.overdue ? " · עבר המועד!" : ""}`;
 
 const crateCard = (c, i) => `
-  <div class="crate crate--${c.status}" role="button" tabindex="0" data-crate="${esc(c.id)}" style="--i:${i}"
-       aria-label="ארגז ${esc(c.number)} – ${esc(c.name)}, סטטוס ${STATUS[c.status].label}" aria-haspopup="dialog">
+  <div class="crate crate--${c.status} ${c.received ? "crate--received" : ""}" role="button" tabindex="0" data-crate="${esc(c.id)}" style="--i:${i}"
+       aria-label="ארגז ${esc(c.number)} – ${esc(c.name)}, סטטוס ${STATUS[c.status].label}${c.received ? `, ${receivedText(c)}` : ""}" aria-haspopup="dialog">
     <div class="crate__lid">
       <span class="crate__stencil">ארגז ${esc(c.number)}</span>
       <span class="pill pill--${c.status}">${STATUS[c.status].label}</span>
     </div>
     <div class="crate__body">
+      ${c.received ? `<p class="crate__received ${c.overdue ? "is-overdue" : ""}">${receivedText(c)}</p>` : ""}
       <div>
         <h3 class="crate__name">${esc(c.name)}</h3>
         <span class="crate__cat">${crateMeta(c)}</span>
@@ -80,8 +85,16 @@ const crateCard = (c, i) => `
 function filteredCrates() {
   const q = state.query.trim();
   return store.crates.filter((c) =>
-    (state.filter === "all" || c.status === state.filter) &&
-    (!q || [c.name, c.number, c.category, ...c.items.flatMap((i) => [i.name, i.serial])].some((s) => s.includes(q))));
+    (state.filter === "all" || (state.filter === "received" ? c.received : c.status === state.filter)) &&
+    (!state.name || c.name === state.name) &&
+    (!q || [c.name, c.number, c.category, c.receivedFrom, ...c.items.flatMap((i) => [i.name, i.serial])].some((s) => s.includes(q))));
+}
+
+function nameOptions() {
+  const names = [...new Set(store.crates.map((c) => c.name))].sort((a, b) => a.localeCompare(b, "he"));
+  if (state.name && !names.includes(state.name)) state.name = "";
+  return `<option value="">כל הארגזים</option>${names.map((n) =>
+    `<option value="${esc(n)}" ${n === state.name ? "selected" : ""}>${esc(n)}</option>`).join("")}`;
 }
 
 function renderCrates(grid) {
@@ -111,12 +124,14 @@ function renderLive(view, animate) {
     .flatMap((c) => c.items.filter((i) => i.status !== "ok").map((i) => ({ c, i })))
     .sort((a, b) => STATUS[b.i.status].rank - STATUS[a.i.status].rank);
   const total = (k) => crates.reduce((a, c) => a + c[k], 0);
+  const received = crates.filter((c) => c.received);
   const kpis = [
     ["ארגזים", crates.length, ""],
     ["סוגי פריטים", total("itemTypes"), ""],
     ["פריטים זמינים", total("available"), "ok"],
     ["אצל חיילים", total("withSoldiers"), ""],
     ["התראות פעילות", alerts.length, alerts.some((a) => a.i.status === "danger") ? "danger" : alerts.length ? "warn" : "ok"],
+    ...(received.length ? [["ארגזים להחזרה", received.length, received.some((c) => c.overdue) ? "danger" : "received"]] : []),
   ];
   const shown = alerts.slice(0, 4);
 
@@ -148,6 +163,7 @@ function renderLive(view, animate) {
     <button type="button" class="btn btn--primary btn--sm" data-act="add-crate">הוספת ארגז</button>
     <button type="button" class="btn btn--ghost btn--sm" data-act="count-all">ספירת מלאי</button>` : ""}
     <button type="button" class="btn btn--ghost btn--sm" data-act="export">ייצוא ל-Excel</button>`;
+  view.querySelector("#crate-name").innerHTML = nameOptions();
   renderCrates(view.querySelector("#crates"));
   if (animate) countUp(view);
 }
@@ -172,9 +188,10 @@ export function renderDashboard(view, user) {
           ${icon("search")}
           <input type="search" id="crate-search" placeholder="חיפוש ארגז, פריט או מ. צלם…" value="${esc(state.query)}" aria-label="חיפוש ארגז, פריט או מ. צלם">
         </label>
+        <select class="select" id="crate-name" aria-label="סינון לפי שם ארגז"></select>
         <div class="chips" role="group" aria-label="סינון לפי סטטוס">
-          ${[["all", "הכל"], ["ok", "תקין"], ["warn", "התראה"], ["danger", "חוסר"]].map(([k, l]) =>
-            `<button type="button" class="chip" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
+          ${FILTERS.map(([k, l]) =>
+            `<button type="button" class="chip ${k === "received" ? "chip--received" : ""}" data-filter="${k}" aria-pressed="${state.filter === k}">${l}</button>`).join("")}
         </div>
         <div class="page-actions" id="crate-actions"></div>
       </div>
@@ -186,6 +203,10 @@ export function renderDashboard(view, user) {
 
   view.querySelector("#crate-search").addEventListener("input", (e) => {
     state.query = e.target.value;
+    renderCrates(grid);
+  });
+  view.querySelector("#crate-name").addEventListener("change", (e) => {
+    state.name = e.target.value;
     renderCrates(grid);
   });
   view.querySelector(".chips").addEventListener("click", (e) => {
@@ -250,12 +271,15 @@ function fillCrate(dlg, c, animate) {
   const scroll = dlg.querySelector(".cd__body")?.scrollTop ?? 0;
   dlg.dataset.crate = c.id;
   dlg.classList.toggle("is-static", !animate);
+  dlg.classList.toggle("crate-dialog--received", c.received);
+  const issues = c.issues.slice(0, ISSUES_SHOWN);
   dlg.innerHTML = `
     <header class="cd__head">
       <span class="crate__stencil">ארגז ${esc(c.number)}</span>
       <div class="cd__titles">
         <h2 id="crate-dialog-title">${esc(c.name)}</h2>
         <p>${[crateMeta(c), `${lastCount(c)}${c.lastCountBy ? ` ע״י ${esc(c.lastCountBy)}` : ""}`].filter(Boolean).join(" · ")}</p>
+        ${c.received ? `<p class="cd__received ${c.overdue ? "is-overdue" : ""}">${receivedText(c)}</p>` : ""}
       </div>
       <span class="pill pill--${c.status}">${STATUS[c.status].label}</span>
       <button type="button" class="btn btn--icon" data-close aria-label="סגירה">${icon("close", "btn__icon")}</button>
@@ -284,15 +308,15 @@ function fillCrate(dlg, c, animate) {
       </div>
       <div class="items">
         ${c.items.map((i, n) => `
-          <div class="item item--${i.status}" style="--i:${n}">
+          <div class="item item--${i.status} ${i.consumable ? "item--consumable" : ""}" style="--i:${n}">
             <div class="item__top">
-              <h4 class="item__name">${esc(i.name)}</h4>
+              <h4 class="item__name">${esc(i.name)}${i.consumable ? ` <span class="tag">מתכלה</span>` : ""}</h4>
               ${i.status !== "ok" ? `<span class="pill pill--${i.status}">${itemLabel(i)}</span>` : ""}
             </div>
             ${meter(i)}
             <div class="item__nums">
-              <span>זמין <b>${i.available}</b></span>
-              <span>אצל חיילים <b>${i.withSoldiers}</b></span>
+              <span>${i.consumable ? "במלאי" : "זמין"} <b>${i.available}</b></span>
+              ${i.consumable ? `<span>נופקו <b>${i.issuedQty}</b></span>` : `<span>אצל חיילים <b>${i.withSoldiers}</b></span>`}
               ${i.faulty ? `<span>תקול <b>${i.faulty}</b></span>` : ""}
               <span>סה״כ <b>${i.total}</b></span>
             </div>
@@ -300,7 +324,7 @@ function fillCrate(dlg, c, animate) {
             ${i.serial ? `<div class="item__serial">מ. צלם: <span dir="ltr">${esc(i.serial)}</span></div>` : ""}
             ${edit ? `
             <div class="item__actions">
-              ${i.available > 0 ? `<button type="button" class="btn btn--primary btn--sm" data-sign="${esc(i.id)}">החתמה</button>` : ""}
+              ${i.available > 0 ? `<button type="button" class="btn btn--primary btn--sm" data-sign="${esc(i.id)}">${i.consumable ? "ניפוק" : "החתמה"}</button>` : ""}
               <button type="button" class="btn btn--ghost btn--sm" data-act="edit-item" data-item="${esc(i.id)}">עריכה</button>
               ${i.withSoldiers ? "" : `<button type="button" class="btn btn--ghost btn--sm" data-act="delete-item" data-item="${esc(i.id)}">מחיקה</button>`}
             </div>` : ""}
@@ -325,6 +349,22 @@ function fillCrate(dlg, c, animate) {
             </div>
           </div>`).join("") : `<p class="muted">אין פריטים מארגז זה אצל חיילים</p>`}
       </div>
+      ${c.items.some((i) => i.consumable) || c.issues.length ? `
+      <h3 class="section-title">ניפוק ציוד מתכלה <span class="muted">· לא מוחזר, לא נרשם על החייל</span></h3>
+      ${issues.length ? `
+      <ul class="issues">
+        ${issues.map((x) => `
+          <li class="issues__row">
+            <span class="issues__date">${fmtDate(x.issuedAt)}</span>
+            <span class="issues__main"><b>${esc(x.itemName)} ×${x.qty}</b> ←
+              ${x.team === null ? esc(x.name) : `<button type="button" class="holder__name" data-open-soldier="${esc(x.soldierId)}">${esc(x.name)}</button>`}
+              ${x.team ? `<span class="muted">· ${esc(teamLabel(x.team))}</span>` : ""}
+              ${x.note ? `<small class="signed__note">הערה: ${esc(x.note)}</small>` : ""}</span>
+            <span class="issues__by">${esc(x.issuedBy)}</span>
+          </li>`).join("")}
+      </ul>
+      ${c.issues.length > issues.length ? `<p class="muted">ועוד ${c.issues.length - issues.length} ניפוקים קודמים (בייצוא ל-Excel)</p>` : ""}`
+      : `<p class="muted">עדיין לא נופק ציוד מתכלה מארגז זה</p>`}` : ""}
     </div>`;
   dlg.querySelector(".cd__body").scrollTop = scroll;
 }

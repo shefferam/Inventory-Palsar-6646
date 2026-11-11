@@ -1,5 +1,5 @@
 // Latest data from the repository, shared by all screens.
-export const store = { crates: [], soldiers: [], role: "viewer", loaded: false };
+export const store = { crates: [], soldiers: [], issues: [], role: "viewer", loaded: false };
 
 export const canEdit = () => store.role === "editor" || store.role === "admin";
 
@@ -12,5 +12,5 @@ export function findItem(itemId) {
 }
 
 export function resetStore() {
-  Object.assign(store, { crates: [], soldiers: [], role: "viewer", loaded: false });
+  Object.assign(store, { crates: [], soldiers: [], issues: [], role: "viewer", loaded: false });
 }

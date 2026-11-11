@@ -6,7 +6,7 @@ import { esc, icon } from "./ui.js";
 const LIMIT = 300;
 const KINDS = [
   ["all", "הכל"],
-  ["sign", "החתמות וזיכויים"],
+  ["sign", "החתמות, זיכויים וניפוקים"],
   ["equipment", "ציוד וספירות"],
   ["soldiers", "חיילים"],
   ["users", "משתמשים"],
@@ -44,6 +44,10 @@ function describe(e, n) {
       const list = (d.changes ?? []).map((c) => `${n.item(c.itemId)} ×${c.delta}`).join(", ");
       return { kind: "sign", text: `החתמת ערכה ל${n.soldier(d.changes?.[0]?.soldierId)}: ${list}${note}` };
     }
+    case "issueItems": {
+      const list = (d.issues ?? []).map((x) => `${n.item(x.itemId)} ×${x.qty}`).join(", ");
+      return { kind: "sign", text: `ניפוק מתכלה ל${n.soldier(d.issues?.[0]?.soldierId)}: ${list}${note}` };
+    }
     case "setNotes":
       return { kind: "sign", text: `עדכון הערה של ${n.soldier(d.soldierId)} (${(d.itemIds ?? []).length} פריטים): ${d.note || "ההערה נמחקה"}` };
     case "upsertSoldiers": {
@@ -53,9 +57,12 @@ function describe(e, n) {
         : { kind: "soldiers", text: `ייבוא ${list.length} חיילים` };
     }
     case "deleteSoldier": return { kind: "soldiers", text: `מחיקת חייל: ${n.soldier(d.id, d.name)}` };
-    case "upsertCrate": return { kind: "equipment", text: `שמירת ארגז ${d.crate?.number ?? ""} – ${d.crate?.name ?? ""}` };
+    case "upsertCrate": return {
+      kind: "equipment",
+      text: `שמירת ארגז ${d.crate?.number ?? ""} – ${d.crate?.name ?? ""}${d.crate?.receivedFrom ? ` (התקבל מ${d.crate.receivedFrom})` : ""}`,
+    };
     case "deleteCrate": return { kind: "equipment", text: `מחיקת ${d.name ?? "ארגז"}` };
-    case "addItem": return { kind: "equipment", text: `הוספת פריט: ${d.item?.name ?? ""} (${d.item?.total ?? 0}) ל${n.crate(d.item?.crateId)}` };
+    case "addItem": return { kind: "equipment", text: `הוספת פריט${d.item?.consumable ? " מתכלה" : ""}: ${d.item?.name ?? ""} (${d.item?.total ?? 0}) ל${n.crate(d.item?.crateId)}` };
     case "deleteItem": return { kind: "equipment", text: `מחיקת פריט: ${d.name ?? n.item(d.id)}` };
     case "updateItem": {
       const p = d.patch ?? {};
@@ -65,6 +72,7 @@ function describe(e, n) {
         "min" in p && `מינימום ${p.min}`,
         p.crateId && `הועבר ל${n.crate(p.crateId)}`,
         "serial" in p && `מ. צלם ${p.serial || "—"}`,
+        "consumable" in p && (p.consumable ? "הוגדר כמתכלה" : "בוטל סימון מתכלה"),
       ].filter(Boolean);
       return { kind: "equipment", text: `עדכון פריט: ${p.name ?? n.item(d.id)}${parts.length ? ` (${parts.join(", ")})` : ""}` };
     }

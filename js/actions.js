@@ -18,20 +18,49 @@ function soldierOptions(selected) {
     </optgroup>`).join("");
 }
 
-function itemOptions(selected) {
+function itemOptions(selected, consumable = false) {
   return store.crates.map((c) => {
-    const items = c.items.filter((i) => i.available > 0 || i.id === selected);
+    const items = c.items.filter((i) => i.consumable === consumable && (i.available > 0 || i.id === selected));
     if (!items.length) return "";
     return `<optgroup label="ארגז ${esc(c.number)} – ${esc(c.name)}">
-      ${items.map((i) => `<option value="${esc(i.id)}" ${i.id === selected ? "selected" : ""}>${esc(i.name)} (זמין ${i.available})</option>`).join("")}
+      ${items.map((i) => `<option value="${esc(i.id)}" ${i.id === selected ? "selected" : ""}>${esc(i.name)} (${consumable ? "במלאי" : "זמין"} ${i.available})</option>`).join("")}
     </optgroup>`;
   }).join("");
 }
 
+const NO_SOLDIERS = "אין חיילים ברשימה. יש להוסיף או לייבא חיילים במסך \"חיילים\".";
+
+/** ניפוק ציוד מתכלה – recorded on the crate only; nothing is signed to the soldier and nothing comes back. */
+export function openIssueForm({ itemId = "", soldierId = "" } = {}) {
+  if (!store.soldiers.length) return toast(NO_SOLDIERS);
+  openForm({
+    title: "ניפוק ציוד מתכלה",
+    submit: "ניפוק",
+    body: `
+      <p class="form__hint">ציוד מתכלה לא נרשם על החייל ולא מוחזר – הניפוק מתועד בארגז בלבד, והכמות יורדת מהמלאי.</p>
+      <label class="field"><span>פריט</span>
+        <select name="itemId" required><option value="">בחר פריט…</option>${itemOptions(itemId, true)}</select></label>
+      <label class="field"><span>למי ניתן</span>
+        <select name="soldierId" required><option value="">בחר חייל…</option>${soldierOptions(soldierId)}</select></label>
+      <label class="field"><span>כמות</span>
+        <input name="qty" type="number" min="1" step="1" value="1" inputmode="numeric" required></label>
+      <label class="field"><span>הערה (לא חובה)</span>
+        <textarea name="note" class="field__note" rows="2" maxlength="300" placeholder="למשל: לשבוע שטח"></textarea></label>`,
+    onSubmit: async (fd) => {
+      const item = fd.get("itemId");
+      const soldier = fd.get("soldierId");
+      if (!item || !soldier) throw new Error("יש לבחור פריט ומקבל");
+      const n = await repo.issueItems(soldier, [{ itemId: item, qty: fd.get("qty") }], fd.get("note"));
+      return n === 1 ? "נופקה יחידה אחת" : `נופקו ${n} יחידות`;
+    },
+  });
+}
+
 /** החתמת ציוד – optionally pre-selecting the item and/or soldier. */
 export function openSignForm({ itemId = "", soldierId = "" } = {}) {
+  if (findItem(itemId)?.item.consumable) return openIssueForm({ itemId, soldierId });
   if (!store.soldiers.length) {
-    toast("אין חיילים ברשימה. יש להוסיף או לייבא חיילים במסך \"חיילים\".");
+    toast(NO_SOLDIERS);
     return;
   }
   const form = openForm({
@@ -175,7 +204,7 @@ function openMailDraft(soldierId, email, lines, note) {
   }).filter(Boolean);
   const body = [
     `שלום ${s?.firstName ?? ""},`, "",
-    `ב-${fmtDate(new Date().toISOString())} הוחתם עליך הציוד הבא:`, ...list, "",
+    `ב-${fmtDate(new Date().toISOString())} חתמת על הציוד הבא:`, ...list, "",
     ...(String(note ?? "").trim() ? [`הערה: ${String(note).trim()}`, ""] : []),
     "יש לשמור על הציוד ולהחזירו בתום השימוש.", "",
     'פלס"ר 6646 – מערכת ניהול ציוד ומלאי',
@@ -223,10 +252,18 @@ export function openCrateForm(crate = null, onCreated) {
       <label class="field"><span>מיקום</span>
         <input name="location" list="crate-locations" maxlength="40" autocomplete="off" value="${esc(crate?.location ?? "")}"></label>
       ${datalist("crate-categories", "category")}
-      ${datalist("crate-locations", "location")}`,
+      ${datalist("crate-locations", "location")}
+      <div class="received-fields">
+        <label class="field"><span>התקבל מגורם אחר (לא חובה)</span>
+          <input name="receivedFrom" maxlength="60" autocomplete="off" placeholder="למשל: גדוד 50, פלוגה ב׳" value="${esc(crate?.receivedFrom ?? "")}"></label>
+        <label class="field"><span>להחזיר עד</span>
+          <input name="returnBy" type="date" value="${esc(crate?.returnBy ?? "")}"></label>
+        <p class="form__hint">למילוי רק כשהציוד בארגז חתום מול גורם אחר וצריך להחזיר אותו. ארגזים כאלה מוצגים בצבע שונה.</p>
+      </div>`,
     onSubmit: async (fd) => {
       const id = await repo.saveCrate({
         id: crate?.id, number: fd.get("number"), name: fd.get("name"), category: fd.get("category"), location: fd.get("location"),
+        receivedFrom: fd.get("receivedFrom"), returnBy: fd.get("returnBy"),
       });
       if (crate) return "הארגז עודכן";
       onCreated?.(id);
@@ -267,6 +304,8 @@ export function openItemForm(crate, item = null) {
       <label class="field"><span>מ. צלם</span>
         <input name="serial" maxlength="300" autocomplete="off" dir="ltr" placeholder="למשל 1234567, 1234568" value="${esc(item?.serial ?? "")}"></label>
       <p class="form__hint">אפשר לרשום כמה מספרים, מופרדים בפסיק. שדה זה מיועד למספרי ציוד בלבד – אין להזין בו מספר אישי.</p>
+      <label class="check"><input type="checkbox" name="consumable" ${item?.consumable ? "checked" : ""} ${item?.withSoldiers && !item.consumable ? "disabled" : ""}>
+        ציוד מתכלה – מנופק ולא מוחזר (למשל כלים חד-פעמיים)</label>
       ${item?.withSoldiers ? `<p class="form__hint">מוחתמים כעת אצל חיילים: ${item.withSoldiers}</p>` : ""}
       ${item ? `
       <label class="field"><span>ארגז</span>
@@ -274,13 +313,14 @@ export function openItemForm(crate, item = null) {
           `<option value="${esc(c.id)}" ${c.id === crate.id ? "selected" : ""}>ארגז ${esc(c.number)} – ${esc(c.name)}</option>`).join("")}</select></label>` : ""}`,
     onSubmit: async (fd) => {
       const data = { name: fd.get("name"), total: fd.get("total"), faulty: fd.get("faulty"), min: fd.get("min"), serial: fd.get("serial") };
+      const consumable = fd.get("consumable") === "on";
       if (item) {
         const crateId = fd.get("crateId");
-        await repo.updateItem(item.id, { ...data, crateId });
+        await repo.updateItem(item.id, { ...data, crateId, ...(consumable !== item.consumable && { consumable }) });
         const target = crateId !== crate.id && store.crates.find((c) => c.id === crateId);
         return target ? `הפריט הועבר לארגז ${target.number}` : "הפריט עודכן";
       }
-      await repo.addItem(crate.id, data);
+      await repo.addItem(crate.id, { ...data, consumable });
       return "הפריט נוסף";
     },
   });
@@ -304,7 +344,7 @@ export function openDeleteItemForm(itemId) {
 /** החתמת ערכה – pick a soldier and any number of items with quantities. */
 export function openKitSignForm({ soldierId = "" } = {}) {
   if (!store.soldiers.length) {
-    toast("אין חיילים ברשימה. יש להוסיף או לייבא חיילים במסך \"חיילים\".");
+    toast(NO_SOLDIERS);
     return;
   }
   const crates = store.crates
@@ -330,11 +370,13 @@ export function openKitSignForm({ soldierId = "" } = {}) {
             <legend>ארגז ${esc(c.number)} – ${esc(c.name)}</legend>
             ${items.map((i) => `
               <label class="kit__row" data-name="${esc(i.name)}">
-                <span class="kit__name">${esc(i.name)} <small class="muted">זמין ${i.available}</small></span>
-                <input type="number" name="qty:${esc(i.id)}" min="0" max="${i.available}" step="1" value="0" inputmode="numeric" aria-label="כמות – ${esc(i.name)}">
+                <span class="kit__name">${esc(i.name)}${i.consumable ? ` <span class="tag">מתכלה</span>` : ""} <small class="muted">זמין ${i.available}</small></span>
+                <input type="number" name="qty:${esc(i.id)}" min="0" max="${i.available}" step="1" value="" placeholder="0" inputmode="numeric" aria-label="כמות – ${esc(i.name)}">
               </label>`).join("")}
           </fieldset>`).join("")}
       </div>
+      ${crates.some(({ items }) => items.some((i) => i.consumable))
+        ? `<p class="form__hint">פריטים שמסומנים "מתכלה" מנופקים ולא מוחתמים – הם נרשמים בארגז בלבד ולא על החייל.</p>` : ""}
       <p class="form__hint" data-kit-summary aria-live="polite">לא נבחרו פריטים</p>
       ${NOTE_FIELD}
       ${NOTIFY_FIELDS}`,
@@ -343,14 +385,28 @@ export function openKitSignForm({ soldierId = "" } = {}) {
       if (!soldier) throw new Error("יש לבחור חייל");
       const email = notifyTarget(fd);
       const lines = [...fd.entries()]
-        .filter(([k]) => k.startsWith("qty:"))
-        .map(([k, v]) => ({ itemId: k.slice(4), qty: v || 0 }));
+        .filter(([k, v]) => k.startsWith("qty:") && Number(v) > 0)
+        .map(([k, v]) => ({ itemId: k.slice(4), qty: v }));
+      const consumable = (l) => findItem(l.itemId)?.item.consumable;
+      const signLines = lines.filter((l) => !consumable(l));
+      const issueLines = lines.filter(consumable);
+      if (!lines.length) throw new Error("לא נבחרו פריטים");
+      // Check the consumables first, so a bad line doesn't leave the sign-out half done.
+      if (issueLines.length) repo.checkIssue(soldier, issueLines);
       const noteText = fd.get("note");
-      const carry = previousNoteItems(form, soldier, lines.filter((l) => Number(l.qty) > 0).map((l) => l.itemId));
-      const n = await repo.signItems(soldier, lines, noteText);
-      await updatePreviousNote(soldier, carry, noteText);
-      const note = email ? await notifySoldier(soldier, email, lines.filter((l) => Number(l.qty) > 0), fd.get("note")) : "";
-      return `${n === 1 ? "פריט אחד הוחתם" : `הוחתמו ${n} פריטים`}${note}`;
+      const done = [];
+      if (signLines.length) {
+        const carry = previousNoteItems(form, soldier, signLines.map((l) => l.itemId));
+        const n = await repo.signItems(soldier, signLines, noteText);
+        await updatePreviousNote(soldier, carry, noteText);
+        done.push(n === 1 ? "פריט אחד הוחתם" : `הוחתמו ${n} פריטים`);
+      }
+      if (issueLines.length) {
+        const n = await repo.issueItems(soldier, issueLines, noteText);
+        done.push(`נופקו ${n} יחידות מתכלות`);
+      }
+      const note = email && signLines.length ? await notifySoldier(soldier, email, signLines, fd.get("note")) : "";
+      return `${done.join(" · ")}${note}`;
     },
   });
   bindNote(form);

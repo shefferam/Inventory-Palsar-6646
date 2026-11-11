@@ -3,11 +3,11 @@ import { teamLabel } from "./data/model.js";
 import { parseSoldierRows } from "./data/schema.js";
 import { bindDialog, closeDialog, openForm } from "./dialogs.js";
 import { fmtDate, openKitSignForm, openReturnForm } from "./actions.js";
-import { printSoldierForm } from "./reports.js";
+import { printSoldierForm, teamSummary } from "./reports.js";
 import { canEdit, store } from "./state.js";
 import { esc, icon } from "./ui.js";
 
-const state = { query: "", team: "all" };
+const state = { query: "", team: "all", mode: "list" };
 
 const initials = (name) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("");
 
@@ -28,6 +28,10 @@ export function renderSoldiers(view) {
         ${icon("search")}
         <input type="search" id="sol-search" placeholder="חיפוש חייל או פריט…" value="${esc(state.query)}" aria-label="חיפוש חייל או פריט">
       </label>
+      <div class="chips" id="sol-mode" role="group" aria-label="תצוגה">
+        ${[["list", "חיילים"], ["summary", "סיכום לפי צוות"]].map(([k, l]) =>
+          `<button type="button" class="chip" data-mode="${k}" aria-pressed="${state.mode === k}">${l}</button>`).join("")}
+      </div>
       <div class="chips" id="sol-teams" role="group" aria-label="סינון לפי צוות"></div>
     </div>
     <div id="sol-list"></div>`;
@@ -42,6 +46,12 @@ export function renderSoldiers(view) {
     if (act === "sign") return openKitSignForm();
     if (act === "add") return openSoldierForm();
     if (act === "import") return openImportForm();
+    const mode = e.target.closest("[data-mode]");
+    if (mode) {
+      state.mode = mode.dataset.mode;
+      view.querySelectorAll("[data-mode]").forEach((b) => b.setAttribute("aria-pressed", String(b === mode)));
+      return renderLive(view, false);
+    }
     const chip = e.target.closest("[data-team]");
     if (chip) {
       state.team = chip.dataset.team;
@@ -102,6 +112,7 @@ function renderList(view) {
     return;
   }
   const q = state.query.trim();
+  if (state.mode === "summary") return renderSummary(el, q);
   const list = store.soldiers.filter((s) =>
     (state.team === "all" || (state.team === "signed" ? s.signedQty > 0 : s.team === state.team)) &&
     (!q || s.name.includes(q) || s.items.some((i) => i.name.includes(q))));
@@ -130,6 +141,33 @@ function renderList(view) {
           </button>`).join("")}
       </div>
     </section>`).join("");
+}
+
+// ---------- Summary by team ----------
+
+function renderSummary(el, q) {
+  const match = (r) => !q || r.name.includes(q);
+  const teams = teamSummary().filter((t) => ["all", "signed"].includes(state.team) || t.team === state.team);
+  el.innerHTML = teams.map((t, n) => {
+    const items = t.items.filter(match);
+    const issued = t.issued.filter(match);
+    return `
+    <section class="team-sum" style="--i:${Math.min(n, 12)}">
+      <header class="team-sum__head">
+        <h2>${esc(teamLabel(t.team))}</h2>
+        <span class="muted">${t.signed} מתוך ${t.soldiers} חיילים מוחתמים · ${t.qty} פריטים</span>
+      </header>
+      ${items.length ? `
+      <table class="sum-table">
+        <thead><tr><th>פריט</th><th>ארגז</th><th>כמות</th><th>חיילים</th></tr></thead>
+        <tbody>${items.map((r) => `
+          <tr><td>${esc(r.name)}</td><td>${esc(r.crate)}</td><td><b>${r.qty}</b></td><td>${r.holders}</td></tr>`).join("")}
+        </tbody>
+      </table>` : `<p class="muted">${q ? "אין פריטים מתאימים" : "אין ציוד מוחתם בצוות זה"}</p>`}
+      ${issued.length ? `
+      <p class="team-sum__issued"><b>נופק מתכלה (לא מוחזר):</b> ${issued.map((r) => `${esc(r.name)} ×${r.qty}`).join(" · ")}</p>` : ""}
+    </section>`;
+  }).join("") || `<p class="empty">אין צוותים להצגה</p>`;
 }
 
 // ---------- Soldier card dialog ----------

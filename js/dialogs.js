@@ -4,7 +4,17 @@ export function closeDialog(dlg) {
   if (!dlg.open || dlg.classList.contains("is-closing")) return;
   if (reducedMotion()) return dlg.close();
   dlg.classList.add("is-closing");
-  dlg.addEventListener("animationend", () => { dlg.classList.remove("is-closing"); dlg.close(); }, { once: true });
+  const done = () => {
+    clearTimeout(timer);
+    dlg.removeEventListener("animationend", onEnd);
+    dlg.classList.remove("is-closing");
+    dlg.close();
+  };
+  // Children's animations bubble up too; only the dialog's own exit animation counts.
+  const onEnd = (e) => { if (e.target === dlg) done(); };
+  // Fallback in case the exit animation never runs (e.g. overridden on small screens).
+  const timer = setTimeout(done, 400);
+  dlg.addEventListener("animationend", onEnd);
 }
 
 /** Wires backdrop/Esc/[data-close] closing; `onClick` handles any other clicks inside the dialog. */
@@ -62,6 +72,11 @@ export function openForm({ title, body, submit, onSubmit, danger = false, wide =
       button.disabled = false;
     }
   };
+
+  // Select the current number on focus so typing replaces it (e.g. the default 0 or 1) instead of appending to it.
+  form.addEventListener("focusin", (e) => {
+    if (e.target.type === "number") setTimeout(() => e.target.select?.(), 0);
+  });
 
   bindDialog(dlg);
   // Drop the form (and anything typed into it) once closed.

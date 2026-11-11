@@ -1,4 +1,4 @@
-import { STATUS, teamLabel } from "./data/model.js";
+import { compareTeams, STATUS, teamLabel } from "./data/model.js";
 import { fmtDate } from "./actions.js";
 import { openForm } from "./dialogs.js";
 import { store } from "./state.js";
@@ -27,14 +27,63 @@ function downloadCsv(name, rows) {
 const stamp = () => new Date().toISOString().slice(0, 10);
 
 function inventoryRows() {
-  const rows = [["מספר ארגז", "שם ארגז", "קטגוריה", "מיקום", "פריט", "מ. צלם", "סה״כ", "זמין", "אצל חיילים", "תקול", "מינימום", "חסרים", "סטטוס", "ספירה אחרונה", "נספר ע״י"]];
+  const rows = [["מספר ארגז", "שם ארגז", "קטגוריה", "מיקום", "התקבל מ", "להחזיר עד", "פריט", "מתכלה", "מ. צלם", "סה״כ", "זמין", "אצל חיילים", "נופקו", "תקול", "מינימום", "חסרים", "סטטוס", "ספירה אחרונה", "נספר ע״י"]];
   for (const c of store.crates) {
-    const base = [c.number, c.name, c.category, c.location];
+    const base = [c.number, c.name, c.category, c.location, c.receivedFrom, c.returnBy ? fmtDate(c.returnBy) : ""];
     const counted = [c.lastCountAt ? fmtDate(c.lastCountAt) : "", c.lastCountBy];
-    if (!c.items.length) rows.push([...base, "", "", "", "", "", "", "", "", "", ...counted]);
+    if (!c.items.length) rows.push([...base, "", "", "", "", "", "", "", "", "", "", "", ...counted]);
     for (const i of c.items) {
-      rows.push([...base, i.name, i.serial, i.total, i.available, i.withSoldiers, i.faulty, i.min, i.short, STATUS[i.status].label, ...counted]);
+      rows.push([...base, i.name, i.consumable ? "כן" : "", i.serial, i.total, i.available, i.withSoldiers, i.issuedQty, i.faulty, i.min, i.short, STATUS[i.status].label, ...counted]);
     }
+  }
+  return rows;
+}
+
+function issueRows() {
+  const rows = [["תאריך", "ארגז", "פריט", "כמות", "ניתן ל", "צוות", "נופק ע״י", "הערה"]];
+  for (const x of store.issues) {
+    rows.push([fmtDate(x.issuedAt), x.crateNumber, x.itemName, x.qty, x.name, x.team === null ? "" : teamLabel(x.team), x.issuedBy, x.note]);
+  }
+  return rows;
+}
+
+/** Per team: soldiers, how many are signed, and the totals of every item signed (plus consumables handed out). */
+export function teamSummary() {
+  const teams = new Map();
+  const teamOf = (key) => {
+    if (!teams.has(key)) teams.set(key, { team: key, soldiers: 0, signed: 0, qty: 0, items: new Map(), issued: new Map() });
+    return teams.get(key);
+  };
+  for (const s of store.soldiers) {
+    const t = teamOf(s.team);
+    t.soldiers++;
+    if (s.signedQty) t.signed++;
+    t.qty += s.signedQty;
+    for (const x of s.items) {
+      const row = t.items.get(x.itemId) ?? { name: x.name, crate: x.crateNumber, qty: 0, holders: 0 };
+      row.qty += x.qty;
+      row.holders++;
+      t.items.set(x.itemId, row);
+    }
+  }
+  for (const x of store.issues) {
+    if (x.team === null || !teams.has(x.team)) continue;
+    const t = teams.get(x.team);
+    const row = t.issued.get(x.itemId) ?? { name: x.itemName, crate: x.crateNumber, qty: 0 };
+    row.qty += x.qty;
+    t.issued.set(x.itemId, row);
+  }
+  const byName = (a, b) => a.name.localeCompare(b.name, "he");
+  return [...teams.values()]
+    .sort((a, b) => compareTeams(a.team, b.team))
+    .map((t) => ({ ...t, items: [...t.items.values()].sort(byName), issued: [...t.issued.values()].sort(byName) }));
+}
+
+function teamRows() {
+  const rows = [["צוות", "פריט", "ארגז", "כמות מוחתמת", "מספר חיילים", "נופק (מתכלה)"]];
+  for (const t of teamSummary()) {
+    for (const r of t.items) rows.push([teamLabel(t.team), r.name, r.crate, r.qty, r.holders, ""]);
+    for (const r of t.issued) rows.push([teamLabel(t.team), r.name, r.crate, "", "", r.qty]);
   }
   return rows;
 }
@@ -60,12 +109,23 @@ export function openExportForm() {
           <span><b>מצב מלאי</b><small>כל הפריטים לפי ארגז – כמויות, תקולים, חוסרים וספירה אחרונה</small></span></label>
         <label class="choice"><input type="radio" name="kind" value="assignments">
           <span><b>החתמות</b><small>כל הציוד המוחתם, לפי חייל וצוות</small></span></label>
+        <label class="choice"><input type="radio" name="kind" value="teams">
+          <span><b>סיכום החתמות לפי צוות</b><small>כמה מכל פריט מוחתם בכל צוות</small></span></label>
+        <label class="choice"><input type="radio" name="kind" value="issues">
+          <span><b>ניפוק ציוד מתכלה</b><small>מה נופק, למי, כמה ומתי</small></span></label>
       </fieldset>`,
     onSubmit: async (fd) => {
-      if (fd.get("kind") === "assignments") {
+      const kind = fd.get("kind");
+      if (kind === "assignments") {
         const rows = assignmentRows();
         if (rows.length === 1) throw new Error("אין כרגע ציוד מוחתם");
         downloadCsv(`palsar-assignments-${stamp()}.csv`, rows);
+      } else if (kind === "teams") {
+        downloadCsv(`palsar-teams-${stamp()}.csv`, teamRows());
+      } else if (kind === "issues") {
+        const rows = issueRows();
+        if (rows.length === 1) throw new Error("עדיין לא נופק ציוד מתכלה");
+        downloadCsv(`palsar-consumables-${stamp()}.csv`, rows);
       } else {
         downloadCsv(`palsar-inventory-${stamp()}.csv`, inventoryRows());
       }
