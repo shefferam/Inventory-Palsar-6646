@@ -1118,6 +1118,101 @@ html.no-emblem .splash__content::before { display: none !important; }
 }
 .users__email { flex: 1 1 220px; min-width: 0; overflow-wrap: anywhere; text-align: start; }
 
+/* ===== Received equipment (signed to another unit, must be returned) ===== */
+:root { --received: #e0b457; }
+:root[data-theme="light"] { --received: #8a5d0c; }
+.kpi--received { --accent: var(--received); }
+.chip--received[aria-pressed="true"] { background: color-mix(in srgb, var(--received) 30%, transparent); border-color: var(--received); }
+.crate--received {
+  border-color: #7a6233;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 27px, rgba(0, 0, 0, .15) 27px 29px),
+    linear-gradient(180deg, #5b4a29, #47391e);
+}
+.crate--received .crate__lid { background: linear-gradient(180deg, #7d6638, #66522b); }
+[data-theme="light"] .crate--received {
+  border-color: #cfae6a;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 27px, rgba(110, 80, 20, .06) 27px 29px),
+    linear-gradient(180deg, #faf0d9, #efdcb2);
+}
+.crate__received, .cd__received {
+  margin: 0;
+  padding: .3rem .6rem;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--received) 16%, transparent);
+  color: var(--received);
+  font-size: .8rem;
+  font-weight: 700;
+}
+.crate__received.is-overdue { color: var(--danger); background: var(--danger-bg); }
+.crate-dialog--received .cd__head { background: linear-gradient(180deg, #7d6638, #5e4b27); }
+.cd__titles .cd__received { display: inline-block; margin-top: .3rem; background: rgba(0, 0, 0, .25); color: #f5d995; }
+.cd__titles .cd__received.is-overdue { color: #fca5a5; }
+.received-fields { display: grid; gap: .6rem; padding: .7rem .9rem; border: 1px dashed color-mix(in srgb, var(--received) 55%, transparent); border-radius: 12px; }
+
+/* ===== Consumables ===== */
+.tag {
+  display: inline-block;
+  padding: 0 .45rem;
+  border-radius: 999px;
+  background: rgba(122, 162, 247, .16);
+  color: #93b4f8;
+  font-size: .72rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+[data-theme="light"] .tag { color: #2f5bb7; }
+.item--consumable { border-style: dashed; }
+.issues { display: grid; gap: .35rem; margin: 0 0 1rem; padding: 0; list-style: none; }
+.issues__row {
+  display: grid;
+  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: .3rem .8rem;
+  padding: .5rem .8rem;
+  border: 1px solid var(--border);
+  border-inline-start: 3px solid #7aa2f7;
+  border-radius: 10px;
+  background: var(--surface);
+  font-size: .88rem;
+}
+.issues__date { color: var(--muted); font-variant-numeric: tabular-nums; }
+.issues__main { min-width: 0; }
+.issues__main small { display: block; font-size: .78rem; }
+.issues__by { color: var(--muted); font-size: .78rem; direction: ltr; overflow-wrap: anywhere; }
+
+/* ===== Crate name filter ===== */
+.select {
+  min-height: 42px;
+  max-width: 220px;
+  padding: .45rem .9rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.select:focus { outline: none; border-color: var(--olive-400); box-shadow: 0 0 0 3px rgba(138, 154, 75, .2); }
+
+/* ===== Team summary ===== */
+.team-sum {
+  margin-bottom: 1rem;
+  padding: .9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  animation: rise-in .4s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 50ms);
+}
+.team-sum__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .2rem .8rem; margin-bottom: .6rem; }
+.team-sum__head h2 { margin: 0; font-size: 1.1rem; }
+.team-sum__issued { margin: .6rem 0 0; color: var(--text-2); font-size: .85rem; }
+.sum-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+.sum-table th, .sum-table td { padding: .35rem .5rem; border-bottom: 1px solid var(--border); text-align: start; }
+.sum-table th { color: var(--muted); font-size: .78rem; font-weight: 600; }
+.sum-table td:nth-child(n+3), .sum-table th:nth-child(n+3) { width: 5rem; text-align: center; font-variant-numeric: tabular-nums; }
+
 /* ===== Print (soldier sign-out form) ===== */
 .print-area { display: none; }
 @media print {
@@ -1147,7 +1242,7 @@ html.no-emblem .splash__content::before { display: none !important; }
 
 /* ===== Responsive ===== */
 /* Live data refreshes re-render without replaying entrance animations. */
-.is-static :is(.kpi, .alert, .crate, .meter span, .item, .holder, .cd__head, .soldier, .signed__row) { animation: none; }
+.is-static :is(.kpi, .alert, .crate, .meter span, .item, .holder, .cd__head, .soldier, .signed__row, .team-sum) { animation: none; }
 @media (max-width: 640px) {
   .topbar { flex-wrap: wrap; gap: .5rem .8rem; }
   .brand__text small { display: none; }
@@ -1160,6 +1255,7 @@ html.no-emblem .splash__content::before { display: none !important; }
   .search { max-width: none; }
   .crate-dialog { width: 100%; max-width: 100%; max-height: 92dvh; margin: auto 0 0; border-radius: 18px 18px 0 0; }
   .crate-dialog[open] { animation-name: sheet-in; }
+  .crate-dialog.is-closing { animation: dialog-out .2s ease forwards; }
   .cd__summary { grid-template-columns: repeat(3, 1fr); gap: .45rem; }
   .cd__summary div { padding: .5rem .6rem; }
   .cd__summary strong { font-size: 1.1rem; }
@@ -1174,6 +1270,9 @@ html.no-emblem .splash__content::before { display: none !important; }
   .count__row input { width: 4.2rem; }
   .hist__row { grid-template-columns: 3rem minmax(0, 1fr); }
   .hist__by { grid-column: 2; }
+  .select { flex: 1 1 100%; max-width: none; }
+  .issues__row { grid-template-columns: 4.8rem minmax(0, 1fr); }
+  .issues__by { grid-column: 2; }
 }
 @keyframes sheet-in { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
 
